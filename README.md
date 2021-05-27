@@ -10,9 +10,9 @@ To run activate the environment
 $ source env/bin/activate
 (env) $
 ```
+
+To stop / deactivate
 ```console
-To stop deactivate
-Deactivate
 (env) $ deactivate
 $
 ```
