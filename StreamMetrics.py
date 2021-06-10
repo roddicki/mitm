@@ -23,8 +23,9 @@ def main():
     MLModel.enable_ml_logger()
 
     if board_id == 0:
-        params.serial_port = "/dev/cu.usbserial-DM01MPXO"
-        # params.serial_port = "COM4"
+        #params.serial_port = "/dev/cu.usbserial-DM01MPXO"
+        params.serial_port = "/dev/cu.usbserial-DM03GT61"
+        # params.serial_port = "COM4" 
 
     sampling_rate = BoardShim.get_sampling_rate(board_id)
     board = BoardShim(board_id, params)
