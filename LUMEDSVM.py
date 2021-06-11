@@ -268,9 +268,6 @@ Mainframe = Mainframe[Mainframe[8] != 4]
 Mainframe = Mainframe[Mainframe[8] != 0] 
 Mainframe = Mainframe[Mainframe[8] != 2]
 
-Mainframe = pd.DataFrame(Mainframe.rolling(256))
-
-print(Mainframe)
 
 # #################################################################
 # # Initialise some settings for pre-processing the data 
@@ -286,6 +283,7 @@ print(Mainframe)
 # sampling_rate = BoardShim.get_sampling_rate(board_id)
 # eeg_channels = [0, 1, 2, 3, 4, 5, 6, 7]
 # nfft = DataFilter.get_nearest_power_of_two(sampling_rate)
+
 # #######################################################################
 # # Functions for data pre-processing 
 # print("Preparing pre-processing functions")
@@ -352,49 +350,46 @@ print(Mainframe)
 # print(nfft)
 
 
-# # # MACHINE LEARNING STUFF ########################################################
-# # #################################################################################
+# MACHINE LEARNING STUFF ########################################################
+#################################################################################
 
-# # # Initialise Training Variables
-# # X = psd
-# # y = label_array
+# Initialise Training Variables
+X = Mainframe[[0, 1, 2, 3, 4, 5, 6, 7]]
+y = Mainframe[8]
 
-# # # X = Mainframe[[0, 1, 2, 3, 4, 5, 6, 7]]
-# # # y = Mainframe[8]
+print("X Shape:", X.shape)
+print("Y Shape:", y.shape)
 
-# # print("X Shape:", X.shape)
-# # print("Y Shape:", y.shape)
+# Split data into a traning set and a test set
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
 
-# # # Split data into a traning set and a test set
-# # X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+print("Fitting data to model... this may take a while")
+classifier = svm.LinearSVC(verbose=True).fit(X_train, y_train.values.ravel())
 
-# # print("Fitting data to model... this may take a while")
-# # classifier = svm.LinearSVC(verbose=True).fit(X_train, y_train.values.ravel())
+np.set_printoptions(precision=2)
 
-# # np.set_printoptions(precision=2)
+print("Saving classifier to disk")
 
-# # print("Saving classifier to disk")
+# s = pickle.dump(classifier, open('EmoSVM_TS_Linear.sav', 'wb'))
+s = pickle.dump(classifier, open('EmoSVM_TS.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_FFT_Linear.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_FFT.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_PSD_Linear.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_PSD.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_Bands_Linear.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_Bands.sav', 'wb'))
 
-# # # s = pickle.dump(classifier, open('EmoSVM_TS_Linear.sav', 'wb'))
-# # # s = pickle.dump(classifier, open('EmoSVM_TS.sav', 'wb'))
-# # # s = pickle.dump(classifier, open('EmoSVM_FFT_Linear.sav', 'wb'))
-# # # s = pickle.dump(classifier, open('EmoSVM_FFT.sav', 'wb'))
-# # s = pickle.dump(classifier, open('EmoSVM_PSD_Linear.sav', 'wb'))
-# # # s = pickle.dump(classifier, open('EmoSVM_PSD.sav', 'wb'))
-# # # s = pickle.dump(classifier, open('EmoSVM_Bands_Linear.sav', 'wb'))
-# # # s = pickle.dump(classifier, open('EmoSVM_Bands.sav', 'wb'))
+# Plot non-normalized confusion matrix
+print("Plotting data to confusion matrix")
 
-# # # Plot non-normalized confusion matrix
-# # print("Plotting data to confusion matrix")
+titles_options = [("Confusion matrix, without normalization", None),
+                  ("Normalized confusion matrix", 'true')]
+for title, normalize in titles_options:
+    disp = plot_confusion_matrix(classifier, X_test, y_test, cmap=plt.cm.Blues, normalize=normalize)
+    disp.ax_.set_title(title)
 
-# # titles_options = [("Confusion matrix, without normalization", None),
-# #                   ("Normalized confusion matrix", 'true')]
-# # for title, normalize in titles_options:
-# #     disp = plot_confusion_matrix(classifier, X_test, y_test, cmap=plt.cm.Blues, normalize=normalize)
-# #     disp.ax_.set_title(title)
+    print(title)
+    print(disp.confusion_matrix)
 
-# #     print(title)
-# #     print(disp.confusion_matrix)
-
-# # plt.show()
+plt.show()
 
