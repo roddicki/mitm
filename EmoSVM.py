@@ -1,59 +1,48 @@
+from operator import concat
 import pandas as pd
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 from numpy.lib.stride_tricks import as_strided as ast
+from pandas.core.construction import array
 from pandas.core.frame import DataFrame
+from pandas.io.pytables import incompatibility_doc
 from sklearn import svm
 from scipy.io import loadmat
 import sklearn
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import plot_confusion_matrix
+from sklearn.metrics import accuracy_score
 
 import brainflow
 from brainflow.board_shim import BoardShim, BrainFlowInputParams, LogLevels, BoardIds
 from brainflow.data_filter import DataFilter, FilterTypes, AggOperations, WindowFunctions, DetrendOperations
 from brainflow.ml_model import MLModel, BrainFlowMetrics, BrainFlowClassifiers, BrainFlowModelParams
 from brainflow.exit_codes import *
+from sklearn.utils import class_weight
 
 ########################################################################
+# ######################################################################
+# Initialise some settings for pre-processing the data 
+print("Initialising pre-processing settings")
+
+board_id = BoardIds.CYTON_BOARD.value
+
+# BoardShim.enable_dev_board_logger()
+params = BrainFlowInputParams()
+# MLModel.enable_ml_logger()
+
+board = BoardShim(board_id, params)
+sampling_rate = BoardShim.get_sampling_rate(board_id)
+eeg_channels = [0, 1, 2, 3, 4, 5, 6, 7]
+nfft = DataFilter.get_nearest_power_of_two(sampling_rate)
+
 ########################################################################
-
-
 # FUNCTIONS ############################################################
-########################################################################
 
-# Windowing function 
-# Taken from : https://gist.github.com/mattjj/5213172
-def chunk_data(data,window_size,overlap_size=0,flatten_inside_window=True):
-    assert data.ndim == 1 or data.ndim == 2
-    if data.ndim == 1:
-        data = data.reshape((-1,1))
-
-    # get the number of overlapping windows that fit into the data
-    num_windows = (data.shape[0] - window_size) // (window_size - overlap_size) + 1
-    overhang = data.shape[0] - (num_windows*window_size - (num_windows-1)*overlap_size)
-
-    # if there's overhang, need an extra window and a zero pad on the data
-    # (numpy 1.7 has a nice pad function I'm not using here)
-    if overhang != 0:
-        num_windows += 1
-        newdata = np.zeros((num_windows*window_size - (num_windows-1)*overlap_size,data.shape[1]))
-        newdata[:data.shape[0]] = data
-        data = newdata
-
-    sz = data.dtype.itemsize
-    ret = ast(
-            data,
-            shape=(num_windows,window_size*data.shape[1]),
-            strides=((window_size-overlap_size)*data.shape[1]*sz,sz)
-            )
-
-    if flatten_inside_window:
-        return ret
-    else:
-        return ret.reshape((num_windows,-1,data.shape[1]))
+# Data manipulation functions
+print("Initializing functions")
 
 # This function condenses labels into two classes 
 # The label coding is as follows 
@@ -62,11 +51,13 @@ def chunk_data(data,window_size,overlap_size=0,flatten_inside_window=True):
 # 3,5-Happy
 # 4-Baseline
 
+# recodes data labels
 def code_labels(coded_df):
     
     # Positive Emotions
     coded_df = coded_df.replace(to_replace = 3, value= 8)    
     coded_df = coded_df.replace(to_replace = 5, value= 8)
+
     
     # Negative Emotions
     coded_df = coded_df.replace(to_replace = 1, value= 9)    
@@ -74,6 +65,7 @@ def code_labels(coded_df):
 
     return coded_df
 
+# turns data labels to descriptive strings
 def stringify_classes(df_to_stringify):
 
     df_to_stringify = df_to_stringify.replace(to_replace = 8, value = "Positive")
@@ -81,10 +73,94 @@ def stringify_classes(df_to_stringify):
 
     return df_to_stringify
 
+# Groups dataframe into smaller dataframes of n chunks
+def chunk_df(_frame_to_chunk, n):
+    chunked_frame = [_frame_to_chunk[i:i+n] for i in range(0,Mainframe.shape[0],n)]
+    _clean_chunked_frame = []
+    for frame in chunked_frame:
+        if frame[8].iloc[0] == frame[8].iloc[-1] and len(frame) == n:
+            _clean_chunked_frame.append(frame)
+
+    return _clean_chunked_frame
+
+# Filters EEG data
+def filter_signal(_data, _eeg_channels):
+    for channel in _eeg_channels:
+        #0hz - 75hz bandpass
+        DataFilter.perform_bandpass(_data[channel], BoardShim.get_sampling_rate(board_id), 37.5, 75, 4, FilterTypes.BESSEL.value, 0)
+        # 50hz filter
+        DataFilter.perform_bandstop(_data[channel], BoardShim.get_sampling_rate(board_id), 50, 1, 3, FilterTypes.BUTTERWORTH.value, 0)
+        #Denoise
+        DataFilter.perform_wavelet_denoising(_data[channel], 'coif3', 3)
+    return _data
+
+# returns bandpowers averaged across all channels
+def get_avg_band_df(_clean_chunked_frame, eeg_channels, sampling_rate):
+    
+    bands_to_array = []
+
+    for frame in _clean_chunked_frame:
+        chunked_eeg_data = frame[[0,1,2,3,4,5,6,7]].to_numpy()
+        chunked_eeg_data = np.transpose(chunked_eeg_data)
+        filtered_eeg_data = filter_signal(chunked_eeg_data, eeg_channels)
+        bands = DataFilter.get_avg_band_powers(filtered_eeg_data, eeg_channels, sampling_rate, True)
+        bands_to_array.append(bands[0])
+
+    bands_to_array = np.concatenate([bands_to_array], axis=0)
+    _avg_bands_df = pd.DataFrame(bands_to_array)
+
+    band_labels = []
+
+    for frame in _clean_chunked_frame:
+        band_labels.append(frame[8].iloc[0])
+
+    band_labels = np.concatenate([band_labels], axis=0)
+    _avg_bands_df[5] = band_labels
+
+    return _avg_bands_df
+
+# returns bandpowers for each channel
+def get_bands_df(_clean_chunked_frame, eeg_channels, sampling_rate):
+    
+    bands_to_array = []
+
+    for frame in _clean_chunked_frame: 
+        chunked_eeg_data = frame[[0,1,2,3,4,5,6,7]].to_numpy()
+        chunked_eeg_data = np.transpose(chunked_eeg_data)
+        filtered_eeg_data = filter_signal(chunked_eeg_data, eeg_channels)
+
+        row_of_bands = []
+
+        fp1_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [0], sampling_rate, True)
+        fp2_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [1], sampling_rate, True)
+        f3_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [2], sampling_rate, True)
+        f4_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [3], sampling_rate, True)
+        f7_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [4], sampling_rate, True)
+        f8_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [5], sampling_rate, True)
+        t7_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [6], sampling_rate, True)
+        t8_bands = DataFilter.get_avg_band_powers(filtered_eeg_data, [7], sampling_rate, True)
+
+        row_of_bands = [fp1_bands[0], fp2_bands[0], f3_bands[0], f4_bands[0], f7_bands[0], f8_bands[0], t7_bands[0], t8_bands[0]]
+        row_of_bands = np.concatenate([row_of_bands], axis=None)
+        bands_to_array.append(row_of_bands)
+
+    bands_to_array = np.concatenate([bands_to_array], axis=0)
+    _bands_df = pd.DataFrame(bands_to_array)
+
+    band_labels = []
+
+    for frame in _clean_chunked_frame:
+        band_labels.append(frame[8].iloc[0])
+
+    band_labels = np.concatenate([band_labels], axis=0)
+    _bands_df[40] = band_labels
+
+    return _bands_df
+
 ###########################################################################
 ###########################################################################
 
-# SCRIPT ##################################################################
+# DATA PROCESSING SCRIPT ##################################################
 ###########################################################################
 
 # Load the Files
@@ -255,7 +331,7 @@ print("Conatenating label dataframes")
 
 Label_df = pd.concat(Label_frames)
 Label_df = code_labels(Label_df)
-# Label_df = stringify_classes(Label_df)
+Label_df = stringify_classes(Label_df)
 
 # Add labels to a master df
 print("Generating Mainframe")
@@ -265,116 +341,54 @@ Mainframe[8] = Label_df
 Mainframe = Mainframe[Mainframe[8] != 4]
 Mainframe = Mainframe[Mainframe[8] != 0] 
 Mainframe = Mainframe[Mainframe[8] != 2]
+Mainframe.reset_index(drop=True, inplace=True)
 
-# #################################################################
-# # Initialise some settings for pre-processing the data 
-# print("Initialising pre-processing settings")
+# Chunk the data for frequency analysis
+print("Chunking for frequency analysis")
 
-# board_id = BoardIds.CYTON_BOARD.value
+CleanChunkFrame = chunk_df(Mainframe, 1024)
 
-# # BoardShim.enable_dev_board_logger()
-# params = BrainFlowInputParams()
-# # MLModel.enable_ml_logger()
+# Make a dataframe of band power values averaged across all channels
+print("Calculating average band power")
 
-# board = BoardShim(board_id, params)
-# sampling_rate = BoardShim.get_sampling_rate(board_id)
-# eeg_channels = [0, 1, 2, 3, 4, 5, 6, 7]
-# nfft = DataFilter.get_nearest_power_of_two(sampling_rate)
+avg_bands_df = get_avg_band_df(CleanChunkFrame, eeg_channels, sampling_rate)
 
-# #######################################################################
-# # Functions for data pre-processing 
-# print("Preparing pre-processing functions")
+# Make a dataframe of band power values averaged across all channels
+print("Calculating band power per chan")
 
-# def calculate_psd(_data, _eeg_channels):
-#     for channel in _eeg_channels:
-#         DataFilter.get_psd_welch(_data[channel], nfft, nfft // 2, sampling_rate, WindowFunctions.BLACKMAN_HARRIS.value)
-#     return _data
+bands_df = get_bands_df(CleanChunkFrame, eeg_channels, sampling_rate)
 
-# def filter_signal(_data, _eeg_channels):
-#     for channel in _eeg_channels:
-#         #5hz - 59hz bandpass
-#         DataFilter.perform_bandpass(_data[channel], BoardShim.get_sampling_rate(board_id), 26.5, 21.5, 4, FilterTypes.BESSEL.value, 0)
-#         # 50hz filter
-#         DataFilter.perform_bandstop(_data[channel], BoardShim.get_sampling_rate(board_id), 50, 1.0, 3, FilterTypes.BUTTERWORTH.value, 0)
-#         #Anti-wifi
-#         DataFilter.perform_bandstop(_data[channel], BoardShim.get_sampling_rate(board_id), 24.25, 1.0, 3, FilterTypes.BUTTERWORTH.value, 0)
-#         #Denoise
-#         DataFilter.perform_wavelet_denoising(_data[channel], 'coif3', 3)
-#     return _data
+###########################################################################
+###########################################################################
 
-# def detrend_signal(_data, _eeg_channels):
-#     for channel in _eeg_channels:
-#         DataFilter.detrend(_data[_eeg_channels], DetrendOperations.LINEAR.value)
-#     return _data
-
-# def calculate_psd(_data, _eeg_channels):
-#     for channel in _eeg_channels:
-#         DataFilter.get_psd_welch(_data[channel], nfft, nfft // 2, sampling_rate, WindowFunctions.BLACKMAN_HARRIS.value)
-#     return _data
-
-# def get_bands(_data, _eeg_channels):
-#     return DataFilter.get_avg_band_powers(_data, _eeg_channels, sampling_rate, True)
-
-# ###################################################################################################
-
-# arrayframe = Mainframe.to_numpy()
-# arrayframe = np.transpose(arrayframe)
-
-# # Initialise data as brainflow-like object 
-# eeg_array = arrayframe[eeg_channels]
-# eeg_array = eeg_array.astype(float)
-# label_array = arrayframe[-1]
-
-
-# # Data pre-processing
-# print("Pre-processing data")
-
-# eeg_array = filter_signal(eeg_array, eeg_channels)
-
-# for count, channel in enumerate(eeg_channels):
-#     eeg_for_fft = eeg_array
-#     fft_data = DataFilter.perform_fft(eeg_for_fft[channel], WindowFunctions.NO_WINDOW.value)
-
-# print(fft_data)
-
-# psd = calculate_psd(eeg_array, eeg_channels)
-# bands = get_bands(eeg_array, eeg_channels)
-
-
-
-# print(len(psd))
-# print(len(bands))
-# print(nfft)
-
-
-# MACHINE LEARNING STUFF ########################################################
-#################################################################################
+# MACHINE LEARNING STUFF ##################################################
+###########################################################################
 
 # Initialise Training Variables
-X = Mainframe[[0, 1, 2, 3, 4, 5, 6, 7]]
-y = Mainframe[8]
 
-print("X Shape:", X.shape)
-print("Y Shape:", y.shape)
+# Raw
+X_raw = Mainframe[[0, 1, 2, 3, 4, 5, 6, 7]]
+y_raw = Mainframe[8]
+
+# Averaged Bands
+X_avg_bands = avg_bands_df[[0, 1, 2, 3, 4]]
+y_avg_bands = avg_bands_df[5]
+
+# Bands
+X_bands = bands_df.iloc[:, 0:-1]
+y_bands = bands_df.iloc[:,-1]
+
+X = X_bands
+y = y_bands
 
 # Split data into a traning set and a test set
-X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0, test_size=0.10)
 
 print("Fitting data to model... this may take a while")
-classifier = svm.LinearSVC(verbose=True).fit(X_train, y_train.values.ravel())
+classifier = svm.SVC(verbose=True, class_weight= 'balanced').fit(X_train, y_train)
 
 np.set_printoptions(precision=2)
 
-print("Saving classifier to disk")
-
-# s = pickle.dump(classifier, open('EmoSVM_TS_Linear.sav', 'wb'))
-s = pickle.dump(classifier, open('EmoSVM_TS.sav', 'wb'))
-# s = pickle.dump(classifier, open('EmoSVM_FFT_Linear.sav', 'wb'))
-# s = pickle.dump(classifier, open('EmoSVM_FFT.sav', 'wb'))
-# s = pickle.dump(classifier, open('EmoSVM_PSD_Linear.sav', 'wb'))
-# s = pickle.dump(classifier, open('EmoSVM_PSD.sav', 'wb'))
-# s = pickle.dump(classifier, open('EmoSVM_Bands_Linear.sav', 'wb'))
-# s = pickle.dump(classifier, open('EmoSVM_Bands.sav', 'wb'))
 
 # Plot non-normalized confusion matrix
 print("Plotting data to confusion matrix")
@@ -389,4 +403,14 @@ for title, normalize in titles_options:
     print(disp.confusion_matrix)
 
 plt.show()
+
+print("Making final fit")
+classifier = svm.SVC(verbose=True, class_weight= 'balanced').fit(X, y)
+
+print("Saving classifier to disk")
+
+# for saving the classifier
+# s = pickle.dump(classifier, open('EmoSVM_TS.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_Bands_avg3.sav', 'wb'))
+# s = pickle.dump(classifier, open('EmoSVM_Bands.sav', 'wb'))
 
