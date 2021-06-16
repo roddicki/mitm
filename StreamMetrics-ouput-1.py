@@ -29,29 +29,27 @@ def main():
         params.serial_port = "/dev/cu.usbserial-DM03GT61"
         # params.serial_port = "COM4"
 
-    sampling_rate = BoardShim.get_sampling_rate(board_id)
     board = BoardShim(board_id, params)
+    sampling_rate = BoardShim.get_sampling_rate(board_id)
     nfft = DataFilter.get_nearest_power_of_two(sampling_rate)
 
-    emoSVM = pickle.load(open('EmoSVM_TS_Linear.sav', 'rb'))
+    emoSVM = pickle.load(open('EmoSVM_Bands.sav', 'rb'))
 
 #### PRE-PROCESSING ########################
 
     def filter_signal(_data, _eeg_channels):
         for channel in _eeg_channels:
             #5hz - 59hz bandpass
-            DataFilter.perform_bandpass(_data[channel], BoardShim.get_sampling_rate(board_id), 26.5, 21.5, 4, FilterTypes.BESSEL.value, 0)
+            DataFilter.perform_bandpass(_data[channel], BoardShim.get_sampling_rate(board_id), 37.5, 75, 4, FilterTypes.BESSEL.value, 0)
             # 50hz filter
             DataFilter.perform_bandstop(_data[channel], BoardShim.get_sampling_rate(board_id), 50, 1.0, 3, FilterTypes.BUTTERWORTH.value, 0)
-            #Anti-wifi
-            DataFilter.perform_bandstop(_data[channel], BoardShim.get_sampling_rate(board_id), 24.25, 1.0, 3, FilterTypes.BUTTERWORTH.value, 0)
             #Denoise
             DataFilter.perform_wavelet_denoising(_data[channel], 'coif3', 3)
         return _data
 
     def detrend_signal(_data, _eeg_channels):
         for channel in _eeg_channels:
-            DataFilter.detrend(_data[_eeg_channels], DetrendOperations.LINEAR.value)
+            DataFilter.detrend(_data[channel], DetrendOperations.LINEAR.value)
         return _data
 
     def calculate_psd(_data, _eeg_channels):
@@ -82,7 +80,7 @@ def main():
         relaxation.release()
         return relax
 
-    def get_valance(_data, _eeg_channels, _emoSVM):                                                                                                                                     
+    def get_valance_TS(_data, _eeg_channels, _emoSVM):                                                                                                                                     
         _df = pd.DataFrame()
         _df = pd.DataFrame(np.transpose(_data))
         _df = _df[_eeg_channels]
@@ -92,10 +90,41 @@ def main():
         pos_count = _value_counts['Positive']
         neg_count = _value_counts['Negative']
 
-        if pos_count/10 > neg_count:
+        if pos_count > neg_count:
             _valance = 'Positive'
         else:
             _valance = 'Negative'
+        return _valance
+
+    def get_valance_bands_avg(_bands, _emoSVM):                                                                                                                                     
+        _avg_bands_df = pd.DataFrame()
+        _avg_bands_df = pd.DataFrame(_bands)
+        
+        _valance = _emoSVM.predict(_avg_bands_df)
+
+        return _valance
+
+    def get_valance_bands(_data, _emoSVM):
+
+        row_of_bands = []
+
+        fp1_bands = DataFilter.get_avg_band_powers(_data, [0], sampling_rate, True)
+        fp2_bands = DataFilter.get_avg_band_powers(_data, [1], sampling_rate, True)
+        f3_bands = DataFilter.get_avg_band_powers(_data, [2], sampling_rate, True)
+        f4_bands = DataFilter.get_avg_band_powers(_data, [3], sampling_rate, True)
+        f7_bands = DataFilter.get_avg_band_powers(_data, [4], sampling_rate, True)
+        f8_bands = DataFilter.get_avg_band_powers(_data, [5], sampling_rate, True)
+        t7_bands = DataFilter.get_avg_band_powers(_data, [6], sampling_rate, True)
+        t8_bands = DataFilter.get_avg_band_powers(_data, [7], sampling_rate, True)
+
+        row_of_bands = [fp1_bands[0], fp2_bands[0], f3_bands[0], f4_bands[0], f7_bands[0], f8_bands[0], t7_bands[0], t8_bands[0]]
+        row_of_bands = np.concatenate([row_of_bands], axis=None)
+        bands_array = np.array([row_of_bands])
+
+        print(bands_array)
+
+        _valance = _emoSVM.predict(bands_array)
+
         return _valance
 
     def get_emotion(_valance, _relax):
@@ -128,7 +157,7 @@ def main():
         eeg_channels = BoardShim.get_eeg_channels(board_id)
 
         while True:
-            time.sleep(2)
+            time.sleep(5)
             data = board.get_board_data()
             pdData = pd.DataFrame(np.transpose(data))
 
@@ -139,10 +168,12 @@ def main():
 
             conc = get_concentration(bands)
             relax = get_relaxation(bands)
-            valance = get_valance(data, eeg_channels, emoSVM)
+            # avg_valance = get_valance_bands_avg(np.array(bands[0]).reshape(1,-1), emoSVM)
+            valance = get_valance_bands(data, emoSVM)
             emotion = get_emotion(valance, relax)
+            print("relaxation: " + str(relax))
             print("valance: " + str(valance))
-            print("relax: " + str(relax))
+            print("arousal: " + str(1 - relax))
             print(emotion)
 
     start_stream()
