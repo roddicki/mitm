@@ -12,6 +12,15 @@ from brainflow.data_filter import DataFilter, FilterTypes, AggOperations, Window
 from brainflow.ml_model import MLModel, BrainFlowMetrics, BrainFlowClassifiers, BrainFlowModelParams
 from brainflow.exit_codes import *
 
+import collections
+import serial
+import random
+import json
+
+# arduino serial port global
+# note check port on arduino software - it changes depending on connector dongle being used
+# with simple usb connector it is '/dev/cu.usbmodem14201'
+arduino = serial.Serial(port='/dev/cu.usbmodem142101', baudrate=115200, timeout=.1)
 
 def main():
     board_choice = input("Press 1 for Synthetic or 2 for Cyton")
@@ -144,6 +153,75 @@ def main():
             _emotion = 'Sad'
         return _emotion
 
+    def get_emotions_mode(_emotions_list):
+        # calculate the frequency of each item
+        _emotions_data = collections.Counter(_emotions_list)
+        _emotions_data_frequency = dict(_emotions_data)
+
+        # Print the items with frequency
+        print(_emotions_list)
+        print(_emotions_data_frequency)
+
+        # Find the highest frequency
+        max_value = max(list(_emotions_data.values()))
+        mode_val = [num for num, freq in _emotions_data_frequency.items() if freq == max_value]
+        if len(mode_val) == len(_emotions_list):
+            # print("No mode in the list")
+            return "null"
+        else:
+            # print("The Mode of the list is : " + ', '.join(map(str, mode_val)))
+            return ', '.join(map(str, mode_val))
+
+#### OUTPUT ######################
+
+    def send_EMS(_emotion):
+        if _emotion == "Happy":
+            print("emotion : Happy")
+            arduino.write(bytes("1", 'utf-8'))
+            time.sleep(0.05)
+            # data = arduino.readline()
+            # print(data)
+        
+        elif _emotion == "Sad":
+            print("emotion : Sad")
+            arduino.write(bytes("2", 'utf-8'))
+            time.sleep(0.05)
+            # data = arduino.readline()
+            # print(data)
+        
+        elif _emotion == "Stressed":
+            print("emotion : Stressed")
+            arduino.write(bytes("3", 'utf-8'))
+            time.sleep(0.05)
+            # data = arduino.readline()
+            # print(data)
+
+        elif _emotion == "Relaxed":
+            print("emotion : Relaxed")
+            arduino.write(bytes("0", 'utf-8'))
+            time.sleep(0.05)
+            # data = arduino.readline()
+            # print(data)
+        
+        elif _emotion == "null":
+            print("emotion : null")
+            arduino.write(bytes("0", 'utf-8'))
+            time.sleep(0.05)
+            # data = arduino.readline()
+            # print(data)
+
+    def write_JSON(_emotions_list):
+        _emotions_dict = {"Happy": 0, "Sad": 0, "Stressed": 0, "Relaxed":0}
+        # calculate the frequency of each item
+        _emotions_data = collections.Counter(_emotions_list)
+        _emotions_data_frequency = dict(_emotions_data)
+        # update dict
+        for key in _emotions_data_frequency:
+            _emotions_dict[key] = _emotions_data_frequency[key]
+        # write to file
+        with open('emotion-output.json', 'w') as fp:
+            json.dump(_emotions_dict, fp)
+
 ##########################################        
 
     def stop_stream():
@@ -155,6 +233,8 @@ def main():
         board.start_stream()
         BoardShim.log_message(LogLevels.LEVEL_INFO.value, 'starting stream')
         eeg_channels = BoardShim.get_eeg_channels(board_id)
+
+        _emotion_aggregate = []
 
         while True:
             time.sleep(5)
@@ -174,7 +254,19 @@ def main():
             print("relaxation: " + str(relax))
             print("valance: " + str(valance))
             print("arousal: " + str(1 - relax))
+            # _ran_emotion = ["Happy", "Sad", "Stressed", "Relaxed"]
+            # emotion = random.choice(_ran_emotion)
             print(emotion)
+            # add to _emotion_aggregate if < 6 items
+            if len(_emotion_aggregate) < 5:
+                _emotion_aggregate.append(emotion)
+            else:
+                # get mode & send to EMS
+                _emotion_mode = get_emotions_mode(_emotion_aggregate)
+                send_EMS(_emotion_mode)
+                write_JSON(_emotion_aggregate)
+                # reset list
+                _emotion_aggregate = []
 
     start_stream()
 

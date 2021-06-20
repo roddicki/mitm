@@ -29,7 +29,7 @@ def readJSON():
 
 # create y axes list
 def make_key_list(data):
-	keys = list(data.keys()) # ['Anger', 'Happiness', 'Sadness']
+	keys = list(data.keys()) # ['Happy', 'Sad', 'Stressed', 'Relaxed']
 	return keys
 
 # create x axes list
@@ -40,7 +40,7 @@ def make_value_list(data):
 # draw bar chart initialy
 def draw_chart():
 	print("edit emotion-output.json to see the chart update")
-	keys = make_key_list(readJSON()) # ['Anger', 'Happiness', 'Sadness']
+	keys = make_key_list(readJSON()) # ['Happy', 'Sad', 'Stressed', 'Relaxed']
 	values = [0,0,0,0] # [1, 20, 3]
 	title_obj = plt.title('Emotion Recognition', fontsize=20)
 	plt.setp(title_obj, color='w')
@@ -60,7 +60,7 @@ def update_chart(i):
     ax.yaxis.set_tick_params(labelsize=14)
     title_obj = plt.title('Emotion Recognition', fontsize=20)
     plt.setp(title_obj, color='w')
-    plt.xlim([0, 1])
+    plt.xlim([0, 5])
     barcollection = plt.barh(keys, values, color='w')
     for i, b in enumerate(barcollection):
         b.set_width(values[i])
