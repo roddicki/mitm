@@ -167,6 +167,7 @@ def main():
         mode_val = [num for num, freq in _emotions_data_frequency.items() if freq == max_value]
         if len(mode_val) == len(_emotions_list):
             # print("No mode in the list")
+            # favour positive - if 2 positives
             return "null"
         else:
             # print("The Mode of the list is : " + ', '.join(map(str, mode_val)))
@@ -179,36 +180,26 @@ def main():
             print("emotion : Happy")
             arduino.write(bytes("1", 'utf-8'))
             time.sleep(0.05)
-            # data = arduino.readline()
-            # print(data)
         
         elif _emotion == "Sad":
             print("emotion : Sad")
             arduino.write(bytes("2", 'utf-8'))
             time.sleep(0.05)
-            # data = arduino.readline()
-            # print(data)
         
         elif _emotion == "Stressed":
             print("emotion : Stressed")
             arduino.write(bytes("3", 'utf-8'))
             time.sleep(0.05)
-            # data = arduino.readline()
-            # print(data)
 
         elif _emotion == "Relaxed":
             print("emotion : Relaxed")
             arduino.write(bytes("0", 'utf-8'))
             time.sleep(0.05)
-            # data = arduino.readline()
-            # print(data)
         
         elif _emotion == "null":
             print("emotion : null")
             arduino.write(bytes("0", 'utf-8'))
             time.sleep(0.05)
-            # data = arduino.readline()
-            # print(data)
 
     def write_JSON(_emotions_list):
         _emotions_dict = {"Happy": 0, "Sad": 0, "Stressed": 0, "Relaxed":0}
@@ -254,8 +245,8 @@ def main():
             print("relaxation: " + str(relax))
             print("valance: " + str(valance))
             print("arousal: " + str(1 - relax))
-            # _ran_emotion = ["Happy", "Sad", "Stressed", "Relaxed"]
-            # emotion = random.choice(_ran_emotion)
+            _ran_emotion = ["Happy", "Sad", "Stressed", "Relaxed"]
+            emotion = "Sad" #random.choice(_ran_emotion)
             print(emotion)
             # add to _emotion_aggregate if < 6 items
             if len(_emotion_aggregate) < 5:

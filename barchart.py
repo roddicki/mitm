@@ -45,6 +45,7 @@ def draw_chart():
 	title_obj = plt.title('Emotion Recognition', fontsize=20)
 	plt.setp(title_obj, color='w')
 	barcollection = plt.barh(keys, values, color='w')
+	# update chart every 1000ms
 	anim = animation.FuncAnimation(fig, update_chart, interval=1000)
 	plt.show()	
 
