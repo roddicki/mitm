@@ -46,7 +46,7 @@ class Graph:
         self.brushes = list()
         colors = ['#A54E4E', '#A473B6', '#5B45A4', '#2079D2', '#32B798', '#2FA537', '#9DA52F', '#A57E2F', '#A53B2F']
         for i in range(len(colors)):
-            pen = pg.mkPen({'color': colors[i], 'width': 2})
+            pen = pg.mkPen({'color': colors[i], 'width': 1})
             self.pens.append(pen)
             brush = pg.mkBrush(colors[i])
             self.brushes.append(brush)
@@ -56,9 +56,9 @@ class Graph:
         self.curves = list()
         for i in range(len(self.exg_channels)):
             p = self.win.addPlot(row=i,col=0)
-            p.showAxis('left', True)
+            p.showAxis('left', False)
             p.setMenuEnabled('left', False)
-            p.showAxis('bottom', False)
+            p.showAxis('bottom', True)
             p.setMenuEnabled('bottom', False)
             if i == 0:
                 p.setTitle('EEG TimeSeries Plot')
@@ -77,13 +77,13 @@ class Graph:
         self.psd_size = DataFilter.get_nearest_power_of_two(self.sampling_rate)
         for i in range(len(self.exg_channels)):
             psd_curve = self.psd_plot.plot(pen=self.pens[i % len(self.pens)])
-            psd_curve.setDownsampling(auto=True, method='mean', ds=3)
+            psd_curve.setDownsampling(auto=False, method='mean', ds=3)
             self.psd_curves.append(psd_curve)
 
     def _init_band_plot(self):
         self.band_plot = self.win.addPlot(row=len(self.exg_channels)//2, col=1, rowspan=len(self.exg_channels)//2)
         self.band_plot.showAxis('left', False)
-        self.band_plot.setMenuEnabled('left', True)
+        self.band_plot.setMenuEnabled('left', False)
         self.band_plot.showAxis('bottom', True)
         self.band_plot.setMenuEnabled('bottom', False)
         self.band_plot.setTitle('EEG BandPower Plot')
@@ -102,8 +102,9 @@ class Graph:
                                         FilterTypes.BUTTERWORTH.value, 0)
             DataFilter.perform_bandstop(data[channel], self.sampling_rate, 50.0, 4.0, 2,
                                         FilterTypes.BUTTERWORTH.value, 0)
-            DataFilter.perform_bandstop(data[channel], self.sampling_rate, 60.0, 4.0, 2,
-                                        FilterTypes.BUTTERWORTH.value, 0)
+            #DataFilter.perform_bandstop(data[channel], self.sampling_rate, 60.0, 4.0, 2,
+                                        #FilterTypes.BUTTERWORTH.value, 0)
+            data[channel] = data[channel]*10
             self.curves[count].setData(data[channel].tolist())
             if data.shape[1] > self.psd_size:
                 # plot psd
@@ -148,7 +149,13 @@ def main():
 
     params = BrainFlowInputParams()
     params.ip_port = args.ip_port
-    params.serial_port = args.serial_port
+    # synthetic
+    # params.serial_port = args.serial_port
+    
+    # headset
+    params.serial_port = '/dev/cu.usbserial-DM03GT61'
+    args.board_id = 0
+
     params.mac_address = args.mac_address
     params.other_info = args.other_info
     params.serial_number = args.serial_number
