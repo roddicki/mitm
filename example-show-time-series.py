@@ -10,6 +10,10 @@ import brainflow
 from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds, BrainFlowError
 from brainflow.data_filter import DataFilter, FilterTypes, AggOperations, WindowFunctions, DetrendOperations
 
+# run
+# python3 example-show-time-series.py --board-id 0 --serial-port '/dev/cu.usbserial-DM03GT61'
+# run as synthetic
+# python3 example-show-time-series.py
 
 class Graph:
     def __init__(self, board_shim):
@@ -60,7 +64,7 @@ class Graph:
                 p.setTitle('EEG TimeSeries Plot')
             self.plots.append(p)
             curve = p.plot(pen=self.pens[i % len(self.pens)])
-            #curve.setDownsampling(auto=True, method='mean', ds=3)
+            curve.setDownsampling(auto=True, method='mean', ds=3)
             self.curves.append(curve)
 
     def _init_psd(self):
