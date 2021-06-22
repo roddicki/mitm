@@ -17,6 +17,8 @@ import serial
 import random
 import json
 
+# run this script 
+
 # arduino serial port global
 # note check port on arduino software - it changes depending on connector dongle being used
 # with simple usb connector it is '/dev/cu.usbmodem14201'
@@ -165,10 +167,17 @@ def main():
         # Find the highest frequency
         max_value = max(list(_emotions_data.values()))
         mode_val = [num for num, freq in _emotions_data_frequency.items() if freq == max_value]
+        print(mode_val)
         if len(mode_val) == len(_emotions_list):
             # print("No mode in the list")
             # favour positive - if 2 positives
             return "null"
+        elif len(mode_val) > 1 and "Happy" in mode_val:
+            return "Happy"
+        elif len(mode_val) > 1 and "Stressed" in mode_val:
+            return "Stressed"
+        elif len(mode_val) > 1:
+            return mode_val[0]
         else:
             # print("The Mode of the list is : " + ', '.join(map(str, mode_val)))
             return ', '.join(map(str, mode_val))
@@ -245,15 +254,16 @@ def main():
             print("relaxation: " + str(relax))
             print("valance: " + str(valance))
             print("arousal: " + str(1 - relax))
-            _ran_emotion = ["Happy", "Sad", "Stressed", "Relaxed"]
-            emotion = "Sad" #random.choice(_ran_emotion)
+            #_ran_emotion = ["Happy", "Sad", "Stressed", "Relaxed"]
+            #emotion = random.choice(_ran_emotion)
             print(emotion)
             # add to _emotion_aggregate if < 6 items
             if len(_emotion_aggregate) < 5:
                 _emotion_aggregate.append(emotion)
             else:
                 # get mode & send to EMS
-                _emotion_mode = get_emotions_mode(_emotion_aggregate)
+                _emotion_mode = get_emotions_mode(["Stressed", "Sad", "Relaxed", "Relaxed", "Sad"])
+                #_emotion_mode = get_emotions_mode(_emotion_aggregate)
                 send_EMS(_emotion_mode)
                 write_JSON(_emotion_aggregate)
                 # reset list
