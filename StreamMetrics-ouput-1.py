@@ -255,15 +255,15 @@ def main():
             print("valance: " + str(valance))
             print("arousal: " + str(1 - relax))
             #_ran_emotion = ["Happy", "Sad", "Stressed", "Relaxed"]
-            #emotion = random.choice(_ran_emotion)
+            emotion = "Sad" #random.choice(_ran_emotion)
             print(emotion)
             # add to _emotion_aggregate if < 6 items
             if len(_emotion_aggregate) < 5:
                 _emotion_aggregate.append(emotion)
             else:
                 # get mode & send to EMS
-                _emotion_mode = get_emotions_mode(["Stressed", "Sad", "Relaxed", "Relaxed", "Sad"])
-                #_emotion_mode = get_emotions_mode(_emotion_aggregate)
+                #_emotion_mode = get_emotions_mode(["Stressed", "Sad", "Relaxed", "Relaxed", "Sad"])
+                _emotion_mode = get_emotions_mode(_emotion_aggregate)
                 send_EMS(_emotion_mode)
                 write_JSON(_emotion_aggregate)
                 # reset list
