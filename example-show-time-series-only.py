@@ -46,7 +46,7 @@ class Graph:
                 p.setTitle('TimeSeries Plot')
             self.plots.append(p)
             curve = p.plot(pen=self.pens[i % len(self.pens)])
-            curve = p.plot()
+            #curve = p.plot()
             self.curves.append(curve)
 
     def _init_pens(self):
@@ -99,7 +99,10 @@ def main():
 
     params = BrainFlowInputParams()
     params.ip_port = args.ip_port
-    params.serial_port = args.serial_port
+    # synthetic
+    #params.serial_port = args.serial_port
+    # headset
+    params.serial_port = '/dev/cu.usbserial-DM03GT61'
     params.mac_address = args.mac_address
     params.other_info = args.other_info
     params.serial_number = args.serial_number

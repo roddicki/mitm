@@ -58,7 +58,7 @@ class Graph:
             p = self.win.addPlot(row=i,col=0)
             p.showAxis('left', False)
             p.setMenuEnabled('left', False)
-            p.showAxis('bottom', True)
+            p.showAxis('bottom', False)
             p.setMenuEnabled('bottom', False)
             if i == 0:
                 p.setTitle('EEG TimeSeries Plot')
@@ -150,10 +150,10 @@ def main():
     params = BrainFlowInputParams()
     params.ip_port = args.ip_port
     # synthetic
-    params.serial_port = args.serial_port
+    #params.serial_port = args.serial_port
     
     # headset
-    # params.serial_port = '/dev/cu.usbserial-DM03GT61'
+    params.serial_port = '/dev/cu.usbserial-DM03GT61'
     args.board_id = 0
 
     params.mac_address = args.mac_address
